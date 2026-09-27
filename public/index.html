@@ -185,6 +185,11 @@
         <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.5 rounded">8K 上下文</span>
       </div>
 
+      <div class="px-2.5 py-1.5 rounded-lg bg-[#202020] border border-[#2d2d2d] text-[11px] font-mono flex items-center justify-between">
+        <span class="text-gray-400">窗口占用:</span>
+        <span id="sidebarContextGauge" class="text-emerald-400 font-semibold">0 / 8,192 (0%)</span>
+      </div>
+
       <div class="flex items-center gap-1 pt-1">
         <button onclick="openAuthModal()" class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs bg-[#242424] hover:bg-[#2f2f2f] text-gray-300 hover:text-white border border-[#333] transition" title="修改访问密码">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
@@ -200,18 +205,31 @@
   <!-- Main Chat Content -->
   <main class="flex-1 flex flex-col h-full bg-mainBg relative min-w-0">
     <!-- Top Bar -->
-    <header class="h-14 border-b border-[#2a2a2a] flex items-center justify-between px-4 z-10 bg-mainBg/95 backdrop-blur">
-      <div class="flex items-center gap-3">
+    <header class="h-14 border-b border-[#2a2a2a] flex items-center justify-between px-3 md:px-5 z-10 bg-mainBg/95 backdrop-blur">
+      <div class="flex items-center gap-3 min-w-0">
         <button onclick="toggleSidebar()" class="md:hidden p-2 -ml-1 text-gray-300 hover:text-white rounded-lg hover:bg-[#2f2f2f]">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
-        <div class="flex items-center gap-2">
-          <h1 class="text-sm font-semibold tracking-wide text-gray-200" id="currentChatTitle">新对话</h1>
+        <div class="flex items-center gap-2 truncate">
+          <h1 class="text-sm font-semibold tracking-wide text-gray-200 truncate" id="currentChatTitle">新对话</h1>
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
-        <button onclick="createNewChat()" class="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-[#2f2f2f]" title="新建对话">
+      <div class="flex items-center gap-2.5">
+        <!-- Context Window Usage Gauge & Stats -->
+        <div id="contextWindowBadge" class="flex items-center gap-2 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-[#27272a] border border-[#3e3e3e] shadow-inner text-xs transition-all" title="当前会话上下文窗口消耗与总量占比">
+          <div class="flex items-center gap-1.5 text-gray-300 font-mono">
+            <span id="contextStatusDot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span class="hidden sm:inline text-gray-400 text-[11px]">窗口:</span>
+            <span id="contextUsageText" class="font-medium text-gray-200">0 / 8,192</span>
+          </div>
+          <div class="w-12 sm:w-20 bg-[#3a3a3c] h-1.5 rounded-full overflow-hidden">
+            <div id="contextProgressBar" class="bg-emerald-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <span id="contextPercentText" class="text-[11px] font-mono font-bold text-emerald-400">0.0%</span>
+        </div>
+
+        <button onclick="createNewChat()" class="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-[#2f2f2f] transition" title="新建对话">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
         </button>
       </div>
@@ -593,17 +611,114 @@
       if (chat.messages.length === 0) {
         messagesContainer.appendChild(emptyState);
         emptyState.classList.remove('hidden');
+        updateContextWindowMeter(null);
       } else {
         emptyState.classList.add('hidden');
         chat.messages.forEach((msg, idx) => {
-          appendMessageUI(msg.role, msg.content, idx);
+          appendMessageUI(msg.role, msg.content, idx, msg.stats);
         });
+        const lastWithStats = chat.messages.slice().reverse().find(m => m.role === 'assistant' && m.stats);
+        updateContextWindowMeter(lastWithStats ? lastWithStats.stats : null);
         renderMath();
         scrollToBottom();
       }
     }
 
-    function appendMessageUI(role, content, index) {
+    function renderMessageFooterHtml(stats, index) {
+      if (!stats) {
+        return `
+          <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+            <button onclick="copyRawText(this, ${index})" class="flex items-center gap-1 hover:text-gray-300 transition py-0.5 px-1.5 rounded hover:bg-[#2b2b2b]">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              <span>复制全篇</span>
+            </button>
+          </div>
+        `;
+      }
+
+      const durationSec = (stats.totalDurationMs / 1000).toFixed(2);
+      const ratio = stats.ratio || 0;
+      const ratioColor = ratio > 80 ? 'text-rose-400' : (ratio > 50 ? 'text-amber-400' : 'text-emerald-400');
+      const barColor = ratio > 80 ? 'bg-rose-500' : (ratio > 50 ? 'bg-amber-500' : 'bg-emerald-500');
+
+      return `
+        <div class="mt-3 pt-2 border-t border-[#333]/70 flex flex-wrap items-center justify-between gap-y-1.5 gap-x-3 text-[11px] text-gray-400 font-mono select-none">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/50 font-semibold shadow-xs">
+              <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span>${stats.tokensPerSecond} t/s</span>
+            </span>
+
+            <span class="text-gray-300">输入: <strong class="font-normal text-white">${stats.promptTokens.toLocaleString()}</strong> tok</span>
+            <span class="text-gray-600">·</span>
+            <span class="text-gray-300">输出: <strong class="font-normal text-white">${stats.evalTokens.toLocaleString()}</strong> tok</span>
+            <span class="text-gray-600">·</span>
+
+            <span class="inline-flex items-center gap-1.5 bg-[#252528] px-2 py-0.5 rounded border border-[#38383a]">
+              <span class="text-gray-400 text-[10px]">窗口占比:</span>
+              <span class="w-12 bg-gray-700 h-1.5 rounded-full overflow-hidden inline-block">
+                <span class="${barColor} h-full block rounded-full" style="width: ${Math.min(ratio, 100)}%"></span>
+              </span>
+              <span class="${ratioColor} font-semibold">${stats.totalTokens.toLocaleString()}</span>
+              <span class="text-gray-500 text-[10px]">/ 8,192</span>
+              <span class="${ratioColor} font-bold text-[10px]">(${ratio}%)</span>
+            </span>
+
+            <span class="text-gray-600">·</span>
+            <span class="text-gray-400">耗时: ${durationSec}s</span>
+          </div>
+
+          <button onclick="copyRawText(this, ${index})" class="flex items-center gap-1 hover:text-gray-200 text-gray-400 transition py-0.5 px-1.5 rounded hover:bg-[#2b2b2b] text-xs ml-auto">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            <span>复制全篇</span>
+          </button>
+        </div>
+      `;
+    }
+
+    function updateContextWindowMeter(stats) {
+      const usageText = document.getElementById('contextUsageText');
+      const bar = document.getElementById('contextProgressBar');
+      const percentText = document.getElementById('contextPercentText');
+      const sidebarGauge = document.getElementById('sidebarContextGauge');
+      const dot = document.getElementById('contextStatusDot');
+      if (!usageText || !bar || !percentText) return;
+
+      if (!stats) {
+        usageText.innerText = '0 / 8,192';
+        bar.style.width = '0%';
+        bar.className = 'bg-emerald-500 h-full rounded-full transition-all duration-300';
+        percentText.innerText = '0.0%';
+        percentText.className = 'text-[11px] font-mono font-bold text-emerald-400';
+        if (sidebarGauge) sidebarGauge.innerText = '0 / 8,192 (0%)';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        return;
+      }
+
+      const ratio = Math.min(Math.max(stats.ratio || 0, 0), 100);
+      usageText.innerText = `${stats.totalTokens.toLocaleString()} / 8,192`;
+      bar.style.width = `${ratio}%`;
+      percentText.innerText = `${ratio.toFixed(1)}%`;
+      if (sidebarGauge) {
+        sidebarGauge.innerText = `${stats.totalTokens.toLocaleString()} tok (${ratio.toFixed(1)}%)`;
+      }
+
+      if (ratio > 85) {
+        bar.className = 'bg-rose-500 h-full rounded-full transition-all duration-300';
+        percentText.className = 'text-[11px] font-mono font-bold text-rose-400';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-400 animate-ping';
+      } else if (ratio > 60) {
+        bar.className = 'bg-amber-500 h-full rounded-full transition-all duration-300';
+        percentText.className = 'text-[11px] font-mono font-bold text-amber-400';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+      } else {
+        bar.className = 'bg-emerald-500 h-full rounded-full transition-all duration-300';
+        percentText.className = 'text-[11px] font-mono font-bold text-emerald-400';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+      }
+    }
+
+    function appendMessageUI(role, content, index, stats) {
       emptyState.classList.add('hidden');
       const isUser = role === 'user';
       const msgWrapper = document.createElement('div');
@@ -626,11 +741,8 @@
             <div class="prose-custom text-sm md:text-[15px] text-gray-100 select-text" id="msgContent_${index}">
               ${marked.parse(content || '')}
             </div>
-            <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
-              <button onclick="copyRawText(this, ${index})" class="flex items-center gap-1 hover:text-gray-300 transition py-0.5 px-1.5 rounded hover:bg-[#2b2b2b]">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                <span>复制全篇</span>
-              </button>
+            <div id="msgFooter_${index}">
+              ${renderMessageFooterHtml(stats, index)}
             </div>
           </div>
         `;
@@ -666,7 +778,7 @@
 
       // Placeholder assistant message
       const assistantMsgIndex = chat.messages.length;
-      chat.messages.push({ role: 'assistant', content: '' });
+      chat.messages.push({ role: 'assistant', content: '', stats: null });
 
       const assistantWrapper = document.createElement('div');
       assistantWrapper.className = 'flex gap-3 md:gap-4 max-w-3xl mx-auto w-full justify-start';
@@ -676,11 +788,8 @@
         </div>
         <div class="flex-1 overflow-hidden min-w-0">
           <div class="prose-custom text-sm md:text-[15px] text-gray-100 select-text typing-cursor" id="msgContent_${assistantMsgIndex}"></div>
-          <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
-            <button onclick="copyRawText(this, ${assistantMsgIndex})" class="flex items-center gap-1 hover:text-gray-300 transition py-0.5 px-1.5 rounded hover:bg-[#2b2b2b]">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-              <span>复制全篇</span>
-            </button>
+          <div id="msgFooter_${assistantMsgIndex}">
+            ${renderMessageFooterHtml(null, assistantMsgIndex)}
           </div>
         </div>
       `;
@@ -695,11 +804,11 @@
       updateButtonState();
 
       let accumulated = '';
+      let latestStats = null;
 
       try {
         const token = getAccessToken();
-        // Send history up to the latest user message
-        const messagesToSend = chat.messages.slice(0, -1);
+        const messagesToSend = chat.messages.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
 
         const response = await fetch('/api/chat', {
           method: 'POST',
@@ -735,11 +844,11 @@
 
           buffer += decoder.decode(value, { stream: true });
           const events = buffer.split('\n\n');
-          buffer = events.pop(); // keep last incomplete event
+          buffer = events.pop();
 
           for (const ev of events) {
             const trimmed = ev.trim();
-            if (!trimmed || trimmed.startsWith(':')) continue; // skip comments / pings
+            if (!trimmed || trimmed.startsWith(':')) continue;
 
             const lines = trimmed.split('\n');
             for (const line of lines) {
@@ -755,11 +864,15 @@
                   } else if (parsed.content) {
                     accumulated += parsed.content;
                   }
+                  if (parsed.stats) {
+                    latestStats = parsed.stats;
+                    updateContextWindowMeter(latestStats);
+                  }
                   contentEl.innerHTML = marked.parse(accumulated);
                   chat.messages[assistantMsgIndex].content = accumulated;
                   scrollToBottom();
                 } catch (e) {
-                  // Not JSON, ignore or log
+                  // Not JSON, ignore
                 }
               }
             }
@@ -769,6 +882,15 @@
         contentEl.classList.remove('typing-cursor');
         contentEl.innerHTML = marked.parse(accumulated || '*(无回复内容)*');
         chat.messages[assistantMsgIndex].content = accumulated;
+        chat.messages[assistantMsgIndex].stats = latestStats;
+        
+        const footerEl = document.getElementById(`msgFooter_${assistantMsgIndex}`);
+        if (footerEl) {
+          footerEl.innerHTML = renderMessageFooterHtml(latestStats, assistantMsgIndex);
+        }
+        if (latestStats) {
+          updateContextWindowMeter(latestStats);
+        }
         renderMath();
         saveChats();
       } catch (err) {

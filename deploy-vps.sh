@@ -316,7 +316,32 @@ const server = http.createServer(async (req, res) => {
               const parsed = JSON.parse(trimmed);
               const delta = parsed.message?.content || '';
               const isDone = parsed.done === true;
-              res.write(`data: ${JSON.stringify({ content: delta, done: isDone })}\n\n`);
+              let stats = null;
+              if (isDone) {
+                const promptTokens = parsed.prompt_eval_count || 0;
+                const evalTokens = parsed.eval_count || 0;
+                const totalTokens = promptTokens + evalTokens;
+                const numCtx = 8192;
+                const ratio = parseFloat(((totalTokens / numCtx) * 100).toFixed(2));
+                const totalDurationMs = parsed.total_duration ? Math.round(parsed.total_duration / 1e6) : 0;
+                const evalDurationMs = parsed.eval_duration ? Math.round(parsed.eval_duration / 1e6) : 0;
+                const tokensPerSecond = (parsed.eval_duration && parsed.eval_count)
+                  ? parseFloat((parsed.eval_count / (parsed.eval_duration / 1e9)).toFixed(1))
+                  : 0;
+
+                stats = {
+                  promptTokens,
+                  evalTokens,
+                  totalTokens,
+                  numCtx,
+                  ratio,
+                  totalDurationMs,
+                  evalDurationMs,
+                  tokensPerSecond
+                };
+              }
+
+              res.write(`data: ${JSON.stringify({ content: delta, done: isDone, stats })}\n\n`);
               if (isDone) {
                 res.write('data: [DONE]\n\n');
                 return res.end();
@@ -331,7 +356,28 @@ const server = http.createServer(async (req, res) => {
           try {
             const parsed = JSON.parse(buffer.trim());
             const delta = parsed.message?.content || '';
-            res.write(`data: ${JSON.stringify({ content: delta, done: parsed.done === true })}\n\n`);
+            const isDone = parsed.done === true;
+            let stats = null;
+            if (isDone) {
+              const promptTokens = parsed.prompt_eval_count || 0;
+              const evalTokens = parsed.eval_count || 0;
+              const totalTokens = promptTokens + evalTokens;
+              const numCtx = 8192;
+              const ratio = parseFloat(((totalTokens / numCtx) * 100).toFixed(2));
+              stats = {
+                promptTokens,
+                evalTokens,
+                totalTokens,
+                numCtx,
+                ratio,
+                totalDurationMs: parsed.total_duration ? Math.round(parsed.total_duration / 1e6) : 0,
+                evalDurationMs: parsed.eval_duration ? Math.round(parsed.eval_duration / 1e6) : 0,
+                tokensPerSecond: (parsed.eval_duration && parsed.eval_count)
+                  ? parseFloat((parsed.eval_count / (parsed.eval_duration / 1e9)).toFixed(1))
+                  : 0
+              };
+            }
+            res.write(`data: ${JSON.stringify({ content: delta, done: isDone, stats })}\n\n`);
           } catch (_) {}
         }
 
