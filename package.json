@@ -1,0 +1,11 @@
+{
+  "name": "ai-webui",
+  "version": "1.0.0",
+  "description": "Production-grade ultra-lightweight Web AI chat application",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {}
+}

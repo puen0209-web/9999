@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Qwen 14B - Web AI Assistant</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            sidebarBg: '#171717',
+            mainBg: '#212121',
+            cardBg: '#2f2f2f',
+            borderCol: '#383838'
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Marked.js for Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Highlight.js for Syntax Highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <!-- KaTeX for Math -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+  <style>
+    /* 100dvh mobile viewport lock */
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #212121;
+      color: #ececec;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #555555;
+    }
+
+    /* Markdown styling */
+    .prose-custom {
+      line-height: 1.7;
+      word-break: break-word;
+    }
+    .prose-custom p {
+      margin-bottom: 0.85rem;
+    }
+    .prose-custom p:last-child {
+      margin-bottom: 0;
+    }
+    .prose-custom h1, .prose-custom h2, .prose-custom h3, .prose-custom h4 {
+      font-weight: 700;
+      margin-top: 1.2rem;
+      margin-bottom: 0.6rem;
+      color: #f3f4f6;
+    }
+    .prose-custom h1 { font-size: 1.5rem; }
+    .prose-custom h2 { font-size: 1.3rem; }
+    .prose-custom h3 { font-size: 1.15rem; }
+    .prose-custom ul {
+      list-style-type: disc;
+      padding-left: 1.5rem;
+      margin-bottom: 0.85rem;
+    }
+    .prose-custom ol {
+      list-style-type: decimal;
+      padding-left: 1.5rem;
+      margin-bottom: 0.85rem;
+    }
+    .prose-custom li {
+      margin-bottom: 0.3rem;
+    }
+    .prose-custom blockquote {
+      border-left: 4px solid #10b981;
+      padding-left: 1rem;
+      margin: 0.85rem 0;
+      color: #9ca3af;
+      background: rgba(16, 185, 129, 0.05);
+      border-radius: 0 0.375rem 0.375rem 0;
+    }
+    .prose-custom table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+    .prose-custom th, .prose-custom td {
+      border: 1px solid #3f3f46;
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+    }
+    .prose-custom th {
+      background-color: #27272a;
+      font-weight: 600;
+    }
+    .prose-custom tr:nth-child(even) {
+      background-color: rgba(255, 255, 255, 0.02);
+    }
+    .prose-custom code:not(pre code) {
+      background-color: #2e2e2e;
+      color: #f43f5e;
+      padding: 0.15rem 0.4rem;
+      border-radius: 0.25rem;
+      font-size: 0.875em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .prose-custom a {
+      color: #60a5fa;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* Typing cursor */
+    .typing-cursor::after {
+      content: '▋';
+      display: inline-block;
+      vertical-align: baseline;
+      animation: blink 0.8s infinite;
+      color: #10b981;
+      margin-left: 2px;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body class="flex h-[100dvh] w-screen overflow-hidden select-text">
+
+  <!-- Mobile Drawer Backdrop -->
+  <div id="drawerBackdrop" class="fixed inset-0 bg-black/60 z-30 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-72 bg-sidebarBg border-r border-[#2a2a2a] flex flex-col transition-transform duration-300 ease-in-out -translate-x-full md:translate-x-0 h-full">
+    <!-- Sidebar Header: New Chat -->
+    <div class="p-3 flex items-center justify-between border-b border-[#262626]">
+      <button onclick="createNewChat()" class="flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[#3e3e3e] hover:bg-[#252525] text-sm font-medium transition shadow-sm">
+        <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        <span>新建对话</span>
+      </button>
+      <button onclick="toggleSidebar()" class="md:hidden ml-2 p-2 text-gray-400 hover:text-white rounded-lg hover:bg-[#252525]">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- History Session List -->
+    <div class="flex-1 overflow-y-auto px-2 py-3 space-y-1" id="chatListContainer">
+      <!-- Session items inserted dynamically -->
+    </div>
+
+    <!-- Sidebar Footer -->
+    <div class="p-3 border-t border-[#262626] space-y-2">
+      <div class="flex items-center justify-between text-xs px-2 text-gray-400">
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="modelIndicator" class="font-mono text-gray-300">qwen14b-uncensored</span>
+        </span>
+        <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.5 rounded">8K 上下文</span>
+      </div>
+
+      <div class="flex items-center gap-1 pt-1">
+        <button onclick="openAuthModal()" class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs bg-[#242424] hover:bg-[#2f2f2f] text-gray-300 hover:text-white border border-[#333] transition" title="修改访问密码">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+          <span>访问凭证</span>
+        </button>
+        <button onclick="clearAllChats()" class="px-2.5 py-2 rounded-lg text-xs bg-[#242424] hover:bg-rose-950/40 text-gray-400 hover:text-rose-400 border border-[#333] transition" title="清空全部会话">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Chat Content -->
+  <main class="flex-1 flex flex-col h-full bg-mainBg relative min-w-0">
+    <!-- Top Bar -->
+    <header class="h-14 border-b border-[#2a2a2a] flex items-center justify-between px-4 z-10 bg-mainBg/95 backdrop-blur">
+      <div class="flex items-center gap-3">
+        <button onclick="toggleSidebar()" class="md:hidden p-2 -ml-1 text-gray-300 hover:text-white rounded-lg hover:bg-[#2f2f2f]">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm font-semibold tracking-wide text-gray-200" id="currentChatTitle">新对话</h1>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="createNewChat()" class="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-[#2f2f2f]" title="新建对话">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Messages Container -->
+    <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
+      <!-- Empty State -->
+      <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto py-12 px-4">
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-950/40 mb-5">
+          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-100 mb-2">今天能帮您些什么？</h2>
+        <p class="text-sm text-gray-400 mb-8">Qwen 14B 无限制本地推理引擎 · 8192 上下文 · 生产级极轻量 WebUI</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
+          <button onclick="useQuickPrompt('帮我写一个轻量高效的 Node.js 异步流式处理脚本，包含详细注释')" class="p-3.5 rounded-xl border border-[#383838] bg-[#282828] hover:bg-[#323232] text-xs transition group">
+            <div class="font-semibold text-gray-200 group-hover:text-emerald-400 mb-1">💻 编写 Node.js 脚本</div>
+            <div class="text-gray-400 text-[11px] line-clamp-1">轻量高效的异步流式处理脚本与注释</div>
+          </button>
+          <button onclick="useQuickPrompt('深入讲解 Transformer 架构中 Self-Attention 机制的数学原理与计算过程')" class="p-3.5 rounded-xl border border-[#383838] bg-[#282828] hover:bg-[#323232] text-xs transition group">
+            <div class="font-semibold text-gray-200 group-hover:text-emerald-400 mb-1">🧠 深度解析数学原理</div>
+            <div class="text-gray-400 text-[11px] line-clamp-1">Transformer 自注意力矩阵与推导</div>
+          </button>
+          <button onclick="useQuickPrompt('请给出几条针对 Linux VPS 内存与 CPU 极限优化的系统级实用技巧')" class="p-3.5 rounded-xl border border-[#383838] bg-[#282828] hover:bg-[#323232] text-xs transition group">
+            <div class="font-semibold text-gray-200 group-hover:text-emerald-400 mb-1">⚡ Linux 极限性能优化</div>
+            <div class="text-gray-400 text-[11px] line-clamp-1">针对小内存 VPS 的内核与进程调优</div>
+          </button>
+          <button onclick="useQuickPrompt('请直接、客观、深刻地分析未来 5 年内开源大模型生态的发展趋势')" class="p-3.5 rounded-xl border border-[#383838] bg-[#282828] hover:bg-[#323232] text-xs transition group">
+            <div class="font-semibold text-gray-200 group-hover:text-emerald-400 mb-1">🚀 开源大模型趋势展望</div>
+            <div class="text-gray-400 text-[11px] line-clamp-1">无偏见、客观分析开源模型生态演进</div>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Dynamic Messages will be appended here -->
+    </div>
+
+    <!-- Input Bar Footer (pinned at bottom, mobile friendly 100dvh) -->
+    <div class="p-3 md:p-4 bg-gradient-to-t from-mainBg via-mainBg to-transparent">
+      <div class="max-w-3xl mx-auto w-full relative">
+        <div class="flex flex-col bg-cardBg border border-[#3e3e3e] focus-within:border-gray-400 rounded-2xl shadow-lg transition-colors overflow-hidden">
+          <textarea
+            id="messageInput"
+            rows="1"
+            placeholder="向 Qwen 14B 发送消息... (Enter 发送, Shift+Enter 换行)"
+            class="w-full bg-transparent px-4 py-3.5 text-sm md:text-base text-gray-100 placeholder-gray-500 focus:outline-none resize-none max-h-48 overflow-y-auto leading-relaxed"
+            onkeydown="handleKeyDown(event)"
+            oninput="autoResizeTextarea(this)"
+          ></textarea>
+          
+          <div class="flex items-center justify-between px-3 pb-2.5 pt-1">
+            <div class="text-[11px] text-gray-500 flex items-center gap-1.5 pl-1">
+              <span>NumCtx: 8192</span>
+              <span>·</span>
+              <span>Temp: 0.7</span>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <!-- Send / Stop Button -->
+              <button
+                id="sendStopButton"
+                onclick="toggleSendOrStop()"
+                class="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:opacity-90 disabled:opacity-30 disabled:hover:opacity-30 transition shadow"
+              >
+                <!-- Send Arrow Icon -->
+                <svg id="sendIcon" class="w-4 h-4 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+                <!-- Stop Icon (hidden by default) -->
+                <span id="stopIcon" class="hidden w-3 h-3 bg-white rounded-sm"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-center mt-2">
+          <span class="text-[11px] text-gray-500">AI 输出内容仅供参考 · 轻量单进程服务 · 内存常驻 &lt; 50MB</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Auth Password Modal -->
+  <div id="authModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-[#242424] border border-[#3e3e3e] rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+      <div class="w-12 h-12 rounded-xl bg-emerald-950/70 border border-emerald-800/50 flex items-center justify-center mb-4 text-emerald-400">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+      </div>
+      <h3 class="text-lg font-bold text-gray-100 mb-1">安全访问验证</h3>
+      <p class="text-xs text-gray-400 mb-4">本服务已直接暴露在公网，请输入访问密码以解锁 Ollama 推理通道。</p>
+      
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-300 mb-1">访问密码 (Access Token)</label>
+          <input
+            type="password"
+            id="passwordInput"
+            placeholder="默认: my-ai-2026"
+            class="w-full bg-[#1a1a1a] border border-[#3e3e3e] focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none transition"
+            onkeydown="if(event.key === 'Enter') submitPassword()"
+          >
+          <p id="authErrorMsg" class="text-xs text-rose-400 mt-1.5 hidden"></p>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button onclick="submitPassword()" id="authSubmitBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-xl text-sm transition shadow-md shadow-emerald-950/50 flex items-center justify-center gap-1.5">
+            <span>确认进入</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-[#333] border border-[#444] text-white text-xs px-4 py-2 rounded-full shadow-lg pointer-events-none opacity-0 transition-opacity duration-200"></div>
+
+  <script>
+    // Configure Marked options
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      highlight: function(code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          try {
+            return hljs.highlight(code, { language: lang }).value;
+          } catch (_) {}
+        }
+        return hljs.highlightAuto(code).value;
+      }
+    });
+
+    // Custom renderer for code blocks with language header and copy button
+    const renderer = new marked.Renderer();
+    const originalCodeRenderer = renderer.code.bind(renderer);
+    renderer.code = function(code, lang, escaped) {
+      const language = (lang || 'code').trim();
+      let highlighted;
+      try {
+        if (lang && hljs.getLanguage(lang)) {
+          highlighted = hljs.highlight(code, { language: lang }).value;
+        } else {
+          highlighted = hljs.highlightAuto(code).value;
+        }
+      } catch (_) {
+        highlighted = code;
+      }
+
+      return `
+        <div class="my-3 rounded-xl overflow-hidden border border-[#3a3a3a] bg-[#1a1a1a] text-sm">
+          <div class="flex items-center justify-between px-3.5 py-1.5 bg-[#252525] border-b border-[#333] text-xs text-gray-400 font-mono">
+            <span class="text-gray-300 font-medium">${language}</span>
+            <button onclick="copyCodeFromButton(this)" class="copy-btn flex items-center gap-1 text-gray-400 hover:text-white transition px-2 py-0.5 rounded hover:bg-[#333]">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              <span>复制代码</span>
+            </button>
+          </div>
+          <pre class="p-3.5 overflow-x-auto"><code class="hljs language-${language} font-mono text-[13px] leading-relaxed">${highlighted}</code></pre>
+        </div>
+      `;
+    };
+    marked.use({ renderer });
+
+    // State
+    const STORAGE_KEY_TOKEN = 'ai_webui_access_token';
+    const STORAGE_KEY_CHATS = 'ai_webui_chats';
+    const STORAGE_KEY_CURRENT = 'ai_webui_current_chat_id';
+
+    let chats = [];
+    let currentChatId = null;
+    let isGenerating = false;
+    let currentAbortController = null;
+
+    // Elements
+    const messagesContainer = document.getElementById('messagesContainer');
+    const emptyState = document.getElementById('emptyState');
+    const messageInput = document.getElementById('messageInput');
+    const sendStopButton = document.getElementById('sendStopButton');
+    const sendIcon = document.getElementById('sendIcon');
+    const stopIcon = document.getElementById('stopIcon');
+    const chatListContainer = document.getElementById('chatListContainer');
+    const currentChatTitle = document.getElementById('currentChatTitle');
+    const sidebar = document.getElementById('sidebar');
+    const drawerBackdrop = document.getElementById('drawerBackdrop');
+    const authModal = document.getElementById('authModal');
+    const passwordInput = document.getElementById('passwordInput');
+    const authErrorMsg = document.getElementById('authErrorMsg');
+
+    // Init
+    window.addEventListener('DOMContentLoaded', () => {
+      loadChats();
+      checkAuthOnInit();
+      autoResizeTextarea(messageInput);
+    });
+
+    // Auth logic
+    function getAccessToken() {
+      return localStorage.getItem(STORAGE_KEY_TOKEN) || 'my-ai-2026';
+    }
+
+    function setAccessToken(token) {
+      localStorage.setItem(STORAGE_KEY_TOKEN, token.trim());
+    }
+
+    async function checkAuthOnInit() {
+      const token = getAccessToken();
+      try {
+        const res = await fetch('/api/verify', {
+          headers: { 'x-access-token': token }
+        });
+        if (res.status === 401) {
+          openAuthModal();
+        }
+      } catch (e) {
+        console.warn('Verify error:', e);
+      }
+    }
+
+    function openAuthModal() {
+      authModal.classList.remove('hidden');
+      passwordInput.value = localStorage.getItem(STORAGE_KEY_TOKEN) || '';
+      authErrorMsg.classList.add('hidden');
+      setTimeout(() => passwordInput.focus(), 100);
+    }
+
+    function closeAuthModal() {
+      authModal.classList.add('hidden');
+    }
+
+    async function submitPassword() {
+      const pwd = passwordInput.value.trim();
+      if (!pwd) {
+        showAuthError('请输入访问密码');
+        return;
+      }
+      authSubmitBtn.disabled = true;
+      authSubmitBtn.innerText = '校验中...';
+
+      try {
+        const res = await fetch('/api/verify', {
+          headers: { 'x-access-token': pwd }
+        });
+        if (res.ok) {
+          setAccessToken(pwd);
+          closeAuthModal();
+          showToast('密码验证成功');
+        } else {
+          showAuthError('密码错误，请重新输入');
+        }
+      } catch (err) {
+        showAuthError('网络或服务连接异常: ' + err.message);
+      } finally {
+        authSubmitBtn.disabled = false;
+        authSubmitBtn.innerHTML = '<span>确认进入</span>';
+      }
+    }
+
+    function showAuthError(msg) {
+      authErrorMsg.innerText = msg;
+      authErrorMsg.classList.remove('hidden');
+    }
+
+    // Chat Storage & Management
+    function loadChats() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_CHATS);
+        chats = saved ? JSON.parse(saved) : [];
+      } catch (_) {
+        chats = [];
+      }
+
+      currentChatId = localStorage.getItem(STORAGE_KEY_CURRENT);
+      if (!currentChatId || !chats.some(c => c.id === currentChatId)) {
+        if (chats.length > 0) {
+          currentChatId = chats[0].id;
+        } else {
+          createNewChat(false);
+          return;
+        }
+      }
+      renderChatList();
+      renderCurrentMessages();
+    }
+
+    function saveChats() {
+      localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
+      localStorage.setItem(STORAGE_KEY_CURRENT, currentChatId);
+    }
+
+    function getCurrentChat() {
+      return chats.find(c => c.id === currentChatId);
+    }
+
+    function createNewChat(shouldFocus = true) {
+      if (isGenerating) stopGeneration();
+      const newChat = {
+        id: 'chat_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        title: '新对话',
+        messages: [],
+        createdAt: Date.now()
+      };
+      chats.unshift(newChat);
+      currentChatId = newChat.id;
+      saveChats();
+      renderChatList();
+      renderCurrentMessages();
+      if (window.innerWidth < 768) toggleSidebar(false);
+      if (shouldFocus) messageInput.focus();
+    }
+
+    function deleteChat(id, event) {
+      if (event) event.stopPropagation();
+      if (isGenerating && currentChatId === id) stopGeneration();
+      chats = chats.filter(c => c.id !== id);
+      if (chats.length === 0) {
+        createNewChat(false);
+      } else {
+        if (currentChatId === id) {
+          currentChatId = chats[0].id;
+        }
+        saveChats();
+        renderChatList();
+        renderCurrentMessages();
+      }
+    }
+
+    function clearAllChats() {
+      if (confirm('确定要清空所有会话历史吗？此操作不可撤销。')) {
+        if (isGenerating) stopGeneration();
+        chats = [];
+        createNewChat(false);
+        showToast('已清空全部会话');
+      }
+    }
+
+    function selectChat(id) {
+      if (currentChatId === id) {
+        if (window.innerWidth < 768) toggleSidebar(false);
+        return;
+      }
+      if (isGenerating) stopGeneration();
+      currentChatId = id;
+      saveChats();
+      renderChatList();
+      renderCurrentMessages();
+      if (window.innerWidth < 768) toggleSidebar(false);
+    }
+
+    function renderChatList() {
+      chatListContainer.innerHTML = '';
+      chats.forEach(chat => {
+        const isActive = chat.id === currentChatId;
+        const item = document.createElement('div');
+        item.className = `group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer text-xs transition ${
+          isActive ? 'bg-[#262626] text-white font-medium' : 'text-gray-400 hover:bg-[#202020] hover:text-gray-200'
+        }`;
+        item.onclick = () => selectChat(chat.id);
+
+        item.innerHTML = `
+          <div class="flex items-center gap-2.5 truncate flex-1 min-w-0 pr-2">
+            <svg class="w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-emerald-400' : 'text-gray-500'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+            <span class="truncate">${escapeHtml(chat.title)}</span>
+          </div>
+          <button onclick="deleteChat('${chat.id}', event)" class="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-400 transition rounded" title="删除对话">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        `;
+        chatListContainer.appendChild(item);
+      });
+    }
+
+    function renderCurrentMessages() {
+      const chat = getCurrentChat();
+      if (!chat) return;
+
+      currentChatTitle.innerText = chat.title;
+      messagesContainer.innerHTML = '';
+
+      if (chat.messages.length === 0) {
+        messagesContainer.appendChild(emptyState);
+        emptyState.classList.remove('hidden');
+      } else {
+        emptyState.classList.add('hidden');
+        chat.messages.forEach((msg, idx) => {
+          appendMessageUI(msg.role, msg.content, idx);
+        });
+        renderMath();
+        scrollToBottom();
+      }
+    }
+
+    function appendMessageUI(role, content, index) {
+      emptyState.classList.add('hidden');
+      const isUser = role === 'user';
+      const msgWrapper = document.createElement('div');
+      msgWrapper.className = `flex gap-3 md:gap-4 max-w-3xl mx-auto w-full ${isUser ? 'justify-end' : 'justify-start'}`;
+
+      if (isUser) {
+        msgWrapper.innerHTML = `
+          <div class="flex flex-col items-end max-w-[85%] md:max-w-2xl">
+            <div class="bg-cardBg border border-[#3a3a3a] text-gray-100 px-4 py-3 rounded-2xl rounded-tr-sm text-sm leading-relaxed whitespace-pre-wrap select-text">
+              ${escapeHtml(content)}
+            </div>
+          </div>
+        `;
+      } else {
+        msgWrapper.innerHTML = `
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex-shrink-0 flex items-center justify-center text-white shadow-sm mt-0.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          </div>
+          <div class="flex-1 overflow-hidden min-w-0">
+            <div class="prose-custom text-sm md:text-[15px] text-gray-100 select-text" id="msgContent_${index}">
+              ${marked.parse(content || '')}
+            </div>
+            <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+              <button onclick="copyRawText(this, ${index})" class="flex items-center gap-1 hover:text-gray-300 transition py-0.5 px-1.5 rounded hover:bg-[#2b2b2b]">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                <span>复制全篇</span>
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      messagesContainer.appendChild(msgWrapper);
+      return msgWrapper;
+    }
+
+    // Message Sending & SSE Streaming with Cascade Abort
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      if (!text || isGenerating) return;
+
+      const chat = getCurrentChat();
+      if (!chat) return;
+
+      // First message updates title
+      if (chat.messages.length === 0) {
+        chat.title = text.slice(0, 18) + (text.length > 18 ? '...' : '');
+        currentChatTitle.innerText = chat.title;
+        renderChatList();
+      }
+
+      // Add user message
+      chat.messages.push({ role: 'user', content: text });
+      saveChats();
+
+      messageInput.value = '';
+      autoResizeTextarea(messageInput);
+      appendMessageUI('user', text, chat.messages.length - 1);
+      scrollToBottom();
+
+      // Placeholder assistant message
+      const assistantMsgIndex = chat.messages.length;
+      chat.messages.push({ role: 'assistant', content: '' });
+
+      const assistantWrapper = document.createElement('div');
+      assistantWrapper.className = 'flex gap-3 md:gap-4 max-w-3xl mx-auto w-full justify-start';
+      assistantWrapper.innerHTML = `
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex-shrink-0 flex items-center justify-center text-white shadow-sm mt-0.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div class="flex-1 overflow-hidden min-w-0">
+          <div class="prose-custom text-sm md:text-[15px] text-gray-100 select-text typing-cursor" id="msgContent_${assistantMsgIndex}"></div>
+          <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+            <button onclick="copyRawText(this, ${assistantMsgIndex})" class="flex items-center gap-1 hover:text-gray-300 transition py-0.5 px-1.5 rounded hover:bg-[#2b2b2b]">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              <span>复制全篇</span>
+            </button>
+          </div>
+        </div>
+      `;
+      messagesContainer.appendChild(assistantWrapper);
+      scrollToBottom();
+
+      const contentEl = document.getElementById(`msgContent_${assistantMsgIndex}`);
+
+      // Start Stream with AbortController
+      isGenerating = true;
+      currentAbortController = new AbortController();
+      updateButtonState();
+
+      let accumulated = '';
+
+      try {
+        const token = getAccessToken();
+        // Send history up to the latest user message
+        const messagesToSend = chat.messages.slice(0, -1);
+
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-access-token': token
+          },
+          body: JSON.stringify({ messages: messagesToSend }),
+          signal: currentAbortController.signal
+        });
+
+        if (response.status === 401) {
+          openAuthModal();
+          contentEl.classList.remove('typing-cursor');
+          contentEl.innerHTML = '<span class="text-rose-400">错误：未经授权的请求 (401)，请输入正确的访问密码。</span>';
+          chat.messages[assistantMsgIndex].content = '错误：未经授权的请求 (401)';
+          saveChats();
+          return;
+        }
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errText}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop(); // keep last incomplete event
+
+          for (const ev of events) {
+            const trimmed = ev.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue; // skip comments / pings
+
+            const lines = trimmed.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const dataStr = line.substring(6).trim();
+                if (dataStr === '[DONE]') {
+                  break;
+                }
+                try {
+                  const parsed = JSON.parse(dataStr);
+                  if (parsed.error) {
+                    accumulated += `\n\n> ⚠️ **错误:** ${parsed.error}`;
+                  } else if (parsed.content) {
+                    accumulated += parsed.content;
+                  }
+                  contentEl.innerHTML = marked.parse(accumulated);
+                  chat.messages[assistantMsgIndex].content = accumulated;
+                  scrollToBottom();
+                } catch (e) {
+                  // Not JSON, ignore or log
+                }
+              }
+            }
+          }
+        }
+
+        contentEl.classList.remove('typing-cursor');
+        contentEl.innerHTML = marked.parse(accumulated || '*(无回复内容)*');
+        chat.messages[assistantMsgIndex].content = accumulated;
+        renderMath();
+        saveChats();
+      } catch (err) {
+        contentEl.classList.remove('typing-cursor');
+        if (err.name === 'AbortError') {
+          accumulated += '\n\n*(已停止生成)*';
+          contentEl.innerHTML = marked.parse(accumulated);
+          chat.messages[assistantMsgIndex].content = accumulated;
+          saveChats();
+          showToast('已中止推理生成');
+        } else {
+          accumulated += `\n\n> ⚠️ **连接异常:** ${err.message}`;
+          contentEl.innerHTML = marked.parse(accumulated);
+          chat.messages[assistantMsgIndex].content = accumulated;
+          saveChats();
+        }
+      } finally {
+        isGenerating = false;
+        currentAbortController = null;
+        updateButtonState();
+        messageInput.focus();
+      }
+    }
+
+    // Cascade abort
+    function stopGeneration() {
+      if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+      }
+      isGenerating = false;
+      updateButtonState();
+    }
+
+    function toggleSendOrStop() {
+      if (isGenerating) {
+        stopGeneration();
+      } else {
+        sendMessage();
+      }
+    }
+
+    function updateButtonState() {
+      if (isGenerating) {
+        sendStopButton.classList.remove('bg-white', 'text-black');
+        sendStopButton.classList.add('bg-rose-600', 'text-white', 'hover:bg-rose-500');
+        sendIcon.classList.add('hidden');
+        stopIcon.classList.remove('hidden');
+        sendStopButton.title = '停止生成';
+      } else {
+        sendStopButton.classList.add('bg-white', 'text-black');
+        sendStopButton.classList.remove('bg-rose-600', 'text-white', 'hover:bg-rose-500');
+        sendIcon.classList.remove('hidden');
+        stopIcon.classList.add('hidden');
+        sendStopButton.title = '发送消息';
+      }
+    }
+
+    // UI Utilities
+    function handleKeyDown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function autoResizeTextarea(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+    }
+
+    function toggleSidebar(forced) {
+      const isClosed = sidebar.classList.contains('-translate-x-full');
+      const open = forced !== undefined ? forced : isClosed;
+      if (open) {
+        sidebar.classList.remove('-translate-x-full');
+        drawerBackdrop.classList.remove('hidden');
+      } else {
+        sidebar.classList.add('-translate-x-full');
+        drawerBackdrop.classList.add('hidden');
+      }
+    }
+
+    function useQuickPrompt(text) {
+      messageInput.value = text;
+      autoResizeTextarea(messageInput);
+      sendMessage();
+    }
+
+    function scrollToBottom() {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function renderMath() {
+      if (window.renderMathInElement) {
+        renderMathInElement(messagesContainer, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+            { left: '\\(', right: '\\)', display: false },
+            { left: '\\[', right: '\\]', display: true }
+          ],
+          throwOnError: false
+        });
+      }
+    }
+
+    function copyCodeFromButton(btn) {
+      const pre = btn.closest('div.my-3').querySelector('pre code');
+      if (!pre) return;
+      navigator.clipboard.writeText(pre.innerText).then(() => {
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = `
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          <span class="text-emerald-400">已复制!</span>
+        `;
+        setTimeout(() => { btn.innerHTML = origHtml; }, 2000);
+      });
+    }
+
+    function copyRawText(btn, index) {
+      const chat = getCurrentChat();
+      if (!chat || !chat.messages[index]) return;
+      const content = chat.messages[index].content;
+      navigator.clipboard.writeText(content).then(() => {
+        showToast('已复制内容到剪贴板');
+      });
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 2200);
+    }
+
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return (text || '').replace(/[&<>"']/g, m => map[m]);
+    }
+  </script>
+</body>
+</html>
