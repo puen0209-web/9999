@@ -20,7 +20,14 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-TARGET_DIR="/root/ai-webui"
+# 自动识别安装目录
+if [ -f "$(pwd)/server.mjs" ]; then
+  TARGET_DIR="$(pwd)"
+elif [ -d "$HOME/ai-webui" ]; then
+  TARGET_DIR="$HOME/ai-webui"
+else
+  TARGET_DIR="/root/ai-webui"
+fi
 PUBLIC_DIR="$TARGET_DIR/public"
 
 # 2. 检查或安装 Node.js (>= 18)
