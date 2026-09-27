@@ -373,8 +373,9 @@ EOF
 # 7. 写入前端静态文件
 cp "$(dirname "$0")/public/index.html" "$PUBLIC_DIR/index.html" 2>/dev/null || true
 if [ ! -f "$PUBLIC_DIR/index.html" ]; then
-  echo -e "${YELLOW}未检测到本地 index.html，正在提取预置前端...${NC}"
-  # 如果独立运行，这里保证 index.html 存在
+  echo -e "${YELLOW}未检测到本地 index.html，正在从 GitHub 下载前端静态页面...${NC}"
+  curl -fsSL https://raw.githubusercontent.com/puen0209-web/9999/main/public/index.html -o "$PUBLIC_DIR/index.html" || \
+  wget -qO "$PUBLIC_DIR/index.html" https://raw.githubusercontent.com/puen0209-web/9999/main/public/index.html
 fi
 
 # 8. 配置 systemd 服务
